@@ -15,29 +15,28 @@ C="abcdefgh"
 X={c:i for i,c in enumerate("PNBRQKpnbrqk")}
 
 # Piece-square tables, written as formulas so they cost code, not data.
+def tab(k,b):return[k*(min(f,7-f)+min(r,7-r))+b for r in range(8)for f in range(8)]
 PAWN=[(0,0,4,8,14,24,40,0)[r]+(10 if f in(3,4)and r in(3,4,5)else 0)for r in range(8)for f in range(8)]
-KNIGHT=[6*(min(f,7-f)+min(r,7-r))-20 for r in range(8)for f in range(8)]
-BISHOP=[4*(min(f,7-f)+min(r,7-r))-8 for r in range(8)for f in range(8)]
+KNIGHT=tab(6,-20)
+BISHOP=tab(4,-8)
+QUEEN=tab(2,-6)
 ROOK=[(15 if r==6 else 0)+(5 if r==0 and f in(3,4)else 0)for r in range(8)for f in range(8)]
-QUEEN=[2*(min(f,7-f)+min(r,7-r))-6 for r in range(8)for f in range(8)]
 KING=[[20,25,10,0,0,10,25,20][f]for f in range(8)]+[max(-50,-15*r)for r in range(1,8)for f in range(8)]
 T={"p":PAWN,"n":KNIGHT,"b":BISHOP,"r":ROOK,"q":QUEEN,"k":KING}
 
 
 def bt():
-    """The tables as 0x88 arrays, white and black mirrored."""
+    # The tables as 0x88 arrays, white and black mirrored.
     w={};b={}
     for n,tbl in T.items():
         a=[0]*128
+        c=[0]*128
         for r in range(8):
             for f in range(8):
                 a[(7-r)*16+f]=tbl[r*8+f]
+                c[r*16+f]=tbl[r*8+f]
         w[n]=a
-        a=[0]*128
-        for r in range(8):
-            for f in range(8):
-                a[r*16+f]=tbl[r*8+f]
-        b[n]=a
+        b[n]=c
     return w,b
 
 
