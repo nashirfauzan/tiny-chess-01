@@ -55,7 +55,7 @@ def nm(i):return C[i&7]+str((i>>4)+1)
 
 
 def ps(f):
-    """A FEN to a state list: board, side, ep, castling, king squares, non-pawn material, hash, score."""
+    # A FEN to a state list: board, side, ep, castling, king squares, non-pawn material, hash, score.
     b=["."]*128
     q=f.split()
     for r,row in enumerate(q[0].split("/")):
@@ -229,7 +229,7 @@ class Cut(Exception):pass
 
 
 def od(S,mv,y,tm):
-    """Order the moves: the table's, then captures, killers, history, the rest."""
+    # Order the moves: the table's, then captures, killers, history, the rest.
     b=S[0]
     k1,k2=kl[y]
     def key(m):
@@ -246,7 +246,7 @@ def od(S,mv,y,tm):
 
 
 def qs(S,al,be,y):
-    """Quiescence: out of check the eval stands, in check every evasion is searched."""
+    # Quiescence: out of check the eval stands, in check every evasion is searched.
     global nd
     nd+=1
     if nd>BD:raise Cut()
@@ -268,7 +268,7 @@ def qs(S,al,be,y):
 
 
 def ab(S,d,al,be,y,cn):
-    """Alpha-beta with a null move, LMR and a transposition table."""
+    # Alpha-beta with a null move, LMR and a transposition table.
     global nd
     nd+=1
     if nd>BD:raise Cut()
@@ -328,7 +328,7 @@ def ab(S,d,al,be,y,cn):
 
 
 def bm(f,mo,bd):
-    """The best move for a position, under a node budget."""
+    # The best move for a position, under a node budget.
     global nd,pa,BD
     BD=bd
     S=ps(f)
@@ -365,7 +365,7 @@ def rq(p,d):return json.load(urllib.request.urlopen(os.environ["MAKEFUN_ENV_URL"
 
 
 def pl():
-    """Play the whole gauntlet: one game at a time, until the env says it is over."""
+    # Play the whole gauntlet: one game at a time, until the env says it is over.
     while 1:
         g=rq("/game",b"{}")
         st=g.get("status")
