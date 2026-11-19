@@ -1,7 +1,4 @@
-# tiny-chess-01 engine source (readable form; packed into main.py by `makefun compress`).
-# A 0x88 chess engine: alpha-beta with a transposition table, principal variation search,
-# late move reductions, null-move pruning, killer moves, a history heuristic, quiescence
-# with full evasions in check, and a deterministic node budget per move.
+# tiny-chess-01: a 0x88 chess engine (TT, PVS, LMR, null move, quiescence). Packed by `makefun compress`.
 import json,os,random,urllib.request
 
 M=20000
@@ -17,9 +14,7 @@ X={c:i for i,c in enumerate("PNBRQKpnbrqk")}
 OP={"depth-2":40000,"depth-3":60000,"depth-4":90000,"nodes-100k":150000,
     "nodes-250k":200000,"nodes-500k":260000,"nodes-1M":320000,"nodes-2M":380000}
 
-
 def tab(k,b):return[k*(min(f,7-f)+min(r,7-r))+b for r in range(8)for f in range(8)]
-
 
 # Piece-square tables, written as formulas so they cost code, not data.
 PAWN=[(0,0,4,8,14,24,40,0)[r]+((0,0,0,10,15,10,5,0)[r] if f in(3,4)else 0)for r in range(8)for f in range(8)]
@@ -30,7 +25,6 @@ QUEEN=tab(2,-6)
 KING=[[20,25,10,0,0,10,25,20][f]for f in range(8)]+[max(-50,-15*r)for r in range(1,8)for f in range(8)]
 KEG=tab(8,-24)
 T={"p":PAWN,"n":KNIGHT,"b":BISHOP,"r":ROOK,"q":QUEEN,"k":KING}
-
 
 def bt():
     # The tables as 0x88 arrays, white and black mirrored.
@@ -46,7 +40,6 @@ def bt():
         b[n]=c
     return w,b
 
-
 W,B=bt()
 
 # Zobrist keys, from a fixed seed so the hash is the same in every run.
@@ -56,12 +49,9 @@ ZR=R.getrandbits(64)
 ZC={c:R.getrandbits(64)for c in"K Q KQ k Kk Qk KQk q Kq Qq KQq kq Kkq Qkq KQkq".split()}
 ZE=[R.getrandbits(64)for _ in range(128)]
 
-
 def nm(i):return C[i&7]+str((i>>4)+1)
 
-
 def rl(sq,w):return(sq>>4)*8+(sq&7)if w else(7-(sq>>4))*8+(sq&7)
-
 
 def ps(f):
     # A FEN to a state: board, side, ep, castling, kings, non-pawn material, hash, score, bishops.
@@ -98,7 +88,6 @@ def ps(f):
     if not w:h^=ZR
     return[b,w,ep,ca,kw,kb,np,h,s,bw,bb]
 
-
 def at(b,t,w):
     # Whether the square t is attacked by the side w.
     n,o,r,q,k,kf="NBRQKP"if w else"nbrqkp"
@@ -120,7 +109,6 @@ def at(b,t,w):
                 s+=x
                 if s&0x88:break
     return 0
-
 
 def gen(S,cp=0):
     # Every pseudo-legal move; cp=1 keeps captures only.
@@ -176,7 +164,6 @@ def gen(S,cp=0):
                         break
                     z+=x
     return o
-
 
 def mk(S,m):
     # Make a move: the new state.
@@ -236,7 +223,6 @@ def mk(S,m):
     if nep>=0:nh^=ZE[nep]
     return[nb,not w,nep,nc,nw,nbk,np,nh^ZR,ns,bw,bb]
 
-
 def ev(S):
     # Material and piece squares, plus a phase-tapered king and the bishop pair.
     w=S[1];np=S[6];kw=S[4];kb=S[5]
@@ -246,8 +232,8 @@ def ev(S):
     g=(KING[rw]*ph+KEG[rw]*q)//6400-(KING[rb]*ph+KEG[rb]*q)//6400
     bp=30 if S[9]>=2 else 0
     bp-=30 if S[10]>=2 else 0
-    return(S[8]if w else-S[8])+g+bp
-
+    s=S[8]+g+bp
+    return s if w else-s
 
 TT={}
 nd=0
@@ -256,9 +242,7 @@ kl=[[None,None]for _ in range(96)]
 hi={}
 BD=0
 
-
 class Cut(Exception):pass
-
 
 def od(S,mv,y,tm):
     # Order the moves: the table's, then captures, killers, history, the rest.
@@ -275,7 +259,6 @@ def od(S,mv,y,tm):
         return-s
     mv.sort(key=key)
     return mv
-
 
 def qs(S,al,be,y):
     # Quiescence: out of check the eval stands, in check every evasion is searched.
@@ -297,7 +280,6 @@ def qs(S,al,be,y):
         if r>=be:return be
         if r>al:al=r
     return-M+y if ch and not n else al
-
 
 def ab(S,d,al,be,y,cn):
     # Alpha-beta with a null move, LMR and a transposition table.
@@ -358,7 +340,6 @@ def ab(S,d,al,be,y,cn):
     if len(TT)<4e5:TT[h]=(d,fl,bs,bm)
     return bs
 
-
 def bm(f,mo,bd):
     # The best move for a position, under a node budget.
     global nd,pa,BD
@@ -392,9 +373,7 @@ def bm(f,mo,bd):
     u=nm(bs[0])+nm(bs[1])+(bs[2]or"")
     return u if u in mo else(mo[0]if mo else None)
 
-
 def rq(p,d):return json.load(urllib.request.urlopen(os.environ["MAKEFUN_ENV_URL"]+p,d))
-
 
 def pl():
     # Play the whole gauntlet: one game at a time, until the env says it is over.
@@ -408,6 +387,5 @@ def pl():
             bd=max(ob//3,ob-ob//8*(y-1))
             g=rq("/move",json.dumps({"game":g["game"],"move":bm(g["fen"],g["legal_moves"],bd)}).encode())
             st=g.get("status")
-
 
 if __name__=="__main__":pl()
