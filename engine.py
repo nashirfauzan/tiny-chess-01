@@ -1,4 +1,4 @@
-# tiny-chess-01 engine source (readable; packed into main.py by `makefun compress`).
+# tiny-chess-01 engine source (readable form; packed into main.py by `makefun compress`).
 # A 0x88 chess engine: alpha-beta with a transposition table, principal variation search,
 # late move reductions, null-move pruning, killer moves, a history heuristic, quiescence
 # with full evasions in check, and a deterministic node budget per move.
@@ -6,22 +6,29 @@ import json,os,random,urllib.request
 
 M=20000
 I=30000
-V={"p":100,"n":325,"b":335,"r":500,"q":1000,"k":0}
+V={"p":100,"n":320,"b":330,"r":500,"q":900,"k":0}
 G=(33,31,18,14,-33,-31,-18,-14)
 D=(17,15,-17,-15)
 H=(16,-16,1,-1)
 K=D+H
 C="abcdefgh"
 X={c:i for i,c in enumerate("PNBRQKpnbrqk")}
+# The house ladder's node budgets, by opponent, so the time goes where it buys Elo.
+OP={"depth-2":40000,"depth-3":60000,"depth-4":90000,"nodes-100k":150000,
+    "nodes-250k":200000,"nodes-500k":260000,"nodes-1M":320000,"nodes-2M":380000}
+
+
+def tab(k,b):return[k*(min(f,7-f)+min(r,7-r))+b for r in range(8)for f in range(8)]
+
 
 # Piece-square tables, written as formulas so they cost code, not data.
-def tab(k,b):return[k*(min(f,7-f)+min(r,7-r))+b for r in range(8)for f in range(8)]
-PAWN=[(0,0,4,8,14,24,40,0)[r]+(10 if f in(3,4)and r in(3,4,5)else 0)for r in range(8)for f in range(8)]
+PAWN=[(0,0,4,8,14,24,40,0)[r]+((0,0,0,10,15,10,5,0)[r] if f in(3,4)else 0)for r in range(8)for f in range(8)]
 KNIGHT=tab(6,-20)
 BISHOP=tab(4,-8)
-QUEEN=tab(2,-6)
 ROOK=[(15 if r==6 else 0)+(5 if r==0 and f in(3,4)else 0)for r in range(8)for f in range(8)]
+QUEEN=tab(2,-6)
 KING=[[20,25,10,0,0,10,25,20][f]for f in range(8)]+[max(-50,-15*r)for r in range(1,8)for f in range(8)]
+KEG=tab(8,-24)
 T={"p":PAWN,"n":KNIGHT,"b":BISHOP,"r":ROOK,"q":QUEEN,"k":KING}
 
 
@@ -53,8 +60,11 @@ ZE=[R.getrandbits(64)for _ in range(128)]
 def nm(i):return C[i&7]+str((i>>4)+1)
 
 
+def rl(sq,w):return(sq>>4)*8+(sq&7)if w else(7-(sq>>4))*8+(sq&7)
+
+
 def ps(f):
-    # A FEN to a state list: board, side, ep, castling, king squares, non-pawn material, hash, score.
+    # A FEN to a state: board, side, ep, castling, kings, non-pawn material, hash, score, bishops.
     b=["."]*128
     q=f.split()
     for r,row in enumerate(q[0].split("/")):
@@ -66,27 +76,31 @@ def ps(f):
     w=q[1]=="w"
     ca=q[2]
     ep=(int(q[3][1])-1)*16+C.index(q[3][0])if q[3]!="-"else-1
-    s=0;np=0;kw=-1;kb=-1;h=0
+    s=0;np=0;kw=-1;kb=-1;h=0;bw=0;bb=0
     for i in range(128):
         p=b[i]
         if p==".":continue
         t=p.lower()
         h^=ZF[X[p]][i]
+        if t=="k":
+            if p.isupper():kw=i
+            else:kb=i
+            continue
         if p.isupper():
             s+=V[t]+W[t][i]
-            if t=="k":kw=i
+            if t=="b":bw+=1
         else:
             s-=V[t]+B[t][i]
-            if t=="k":kb=i
-        if t!="p"and t!="k":np+=V[t]
+            if t=="b":bb+=1
+        if t!="p":np+=V[t]
     h^=ZC.get(ca,0)
     if ep>=0:h^=ZE[ep]
     if not w:h^=ZR
-    return[b,w,ep,ca,kw,kb,np,h,s]
+    return[b,w,ep,ca,kw,kb,np,h,s,bw,bb]
 
 
 def at(b,t,w):
-    """Whether the square t is attacked by the side w."""
+    # Whether the square t is attacked by the side w.
     n,o,r,q,k,kf="NBRQKP"if w else"nbrqkp"
     d=-16 if w else 16
     for s in(t+d-1,t+d+1):
@@ -109,7 +123,7 @@ def at(b,t,w):
 
 
 def gen(S,cp=0):
-    """Every pseudo-legal move; cp=1 keeps captures only."""
+    # Every pseudo-legal move; cp=1 keeps captures only.
     b=S[0];w=S[1];ep=S[2];ca=S[3]
     o=[];a=o.append
     for i in range(128):
@@ -165,14 +179,15 @@ def gen(S,cp=0):
 
 
 def mk(S,m):
-    """Make a move: the new state list."""
-    b,w,ep,ca,kw,kb,np,h,s=S
+    # Make a move: the new state.
+    b,w,ep,ca,kw,kb,np,h,s,bw,bb=S
     fr,to,pr=m
     p=b[fr];t=p.lower();cp=b[to]
     tb=W if w else B
     g=1 if w else-1
     nb=b[:]
-    ns=s-g*(V[t]+tb[t][fr])+g*(V[t]+tb[t][to])
+    ns=s
+    if t!="k":ns=s-g*(V[t]+tb[t][fr])+g*(V[t]+tb[t][to])
     nh=h^ZF[X[p]][fr]^ZF[X[p]][to]
     nw,nbk=kw,kb
     if t=="k":
@@ -183,6 +198,9 @@ def mk(S,m):
         ns+=V[c]+B[c][to]if cp.islower()else-(V[c]+W[c][to])
         nh^=ZF[X[cp]][to]
         if c!="p":np-=V[c]
+        if c=="b":
+            if cp.islower():bb-=1
+            else:bw-=1
     elif t=="p"and to==ep:
         cs=to+(-16 if w else 16)
         ns+=V["p"]+B["p"][cs]if w else-(V["p"]+W["p"][cs])
@@ -204,6 +222,9 @@ def mk(S,m):
         p=pr.upper()if w else pr
         nh^=ZF[X["P"if w else"p"]][to]^ZF[X[p]][to]
         nb[to]=p
+        if pr=="b":
+            if w:bw+=1
+            else:bb+=1
     nc=ca
     for q,c in((0,"Q"),(7,"K"),(0x70,"q"),(0x77,"k")):
         if fr==q or to==q:nc=nc.replace(c,"")
@@ -213,7 +234,19 @@ def mk(S,m):
     nep=(to+fr)//2 if t=="p"and abs(to-fr)==32 else-1
     if ep>=0:nh^=ZE[ep]
     if nep>=0:nh^=ZE[nep]
-    return[nb,not w,nep,nc,nw,nbk,np,nh^ZR,ns]
+    return[nb,not w,nep,nc,nw,nbk,np,nh^ZR,ns,bw,bb]
+
+
+def ev(S):
+    # Material and piece squares, plus a phase-tapered king and the bishop pair.
+    w=S[1];np=S[6];kw=S[4];kb=S[5]
+    ph=np if np<6400 else 6400
+    q=6400-ph
+    rw=rl(kw,1);rb=rl(kb,0)
+    g=(KING[rw]*ph+KEG[rw]*q)//6400-(KING[rb]*ph+KEG[rb]*q)//6400
+    bp=30 if S[9]>=2 else 0
+    bp-=30 if S[10]>=2 else 0
+    return(S[8]if w else-S[8])+g+bp
 
 
 TT={}
@@ -252,7 +285,7 @@ def qs(S,al,be,y):
     b,w,kw,kb=S[0],S[1],S[4],S[5]
     ch=at(b,kw if w else kb,not w)
     if not ch:
-        sa=S[8]if w else-S[8]
+        sa=ev(S)
         if sa>=be:return be
         if sa>al:al=sa
     n=0
@@ -271,7 +304,7 @@ def ab(S,d,al,be,y,cn):
     global nd
     nd+=1
     if nd>BD:raise Cut()
-    b,w,ep,ca,kw,kb,np,h,s=S
+    b,w,ep,ca,kw,kb,np,h,s=S[0],S[1],S[2],S[3],S[4],S[5],S[6],S[7],S[8]
     if h in pa:return 0
     e=TT.get(h)
     tm=None
@@ -287,7 +320,7 @@ def ab(S,d,al,be,y,cn):
     if cn and not ch and d>2 and np>600:
         h2=h^ZR
         if ep>=0:h2^=ZE[ep]
-        if-ab([b,not w,-1,ca,kw,kb,np,h2,s],d-3,-be,-be+1,y+1,0)>=be:return be
+        if-ab([b,not w,-1,ca,kw,kb,np,h2,s,S[9],S[10]],d-3,-be,-be+1,y+1,0)>=be:return be
     mv=[]
     for m in gen(S):
         st=mk(S,m)
@@ -369,9 +402,11 @@ def pl():
         g=rq("/game",b"{}")
         st=g.get("status")
         if st=="done":break
+        ob=OP.get(g.get("opponent"),120000)
         while st=="your_move":
             y=int(g["fen"].split()[5])
-            g=rq("/move",json.dumps({"game":g["game"],"move":bm(g["fen"],g["legal_moves"],max(40000,95000-1900*y))}).encode())
+            bd=max(ob//3,ob-ob//8*(y-1))
+            g=rq("/move",json.dumps({"game":g["game"],"move":bm(g["fen"],g["legal_moves"],bd)}).encode())
             st=g.get("status")
 
 
