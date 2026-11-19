@@ -13,7 +13,7 @@ full engine:
 - Transposition table, principal variation search, late move reductions, null-move pruning, killer
   moves and a history heuristic; quiescence that stands pat out of check and searches every evasion
   in check; repetition detection inside the search line.
-- A deterministic node budget per move, derived from the position and the game, never from a clock:
+- A deterministic node budget per move, derived from the game's move number, never from a clock:
   the same position always yields the same move, so a trial's replay reproduces every move and
   result.
 
